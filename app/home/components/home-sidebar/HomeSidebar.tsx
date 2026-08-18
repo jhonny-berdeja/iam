@@ -13,6 +13,18 @@ const NAV_LINK_CLASSES =
 export default function HomeSidebar() {
   return (
     <aside className="flex w-64 shrink-0 flex-col gap-1 border-r border-gray-200 bg-white p-4">
+      <Link href="/home/applications/list" className={NAV_LINK_CLASSES}>
+        Ver aplicaciones
+      </Link>
+      <Link href="/home/roles/list" className={NAV_LINK_CLASSES}>
+        Ver roles de aplicaciones
+      </Link>
+      <Link href="/home/internal-users/list" className={NAV_LINK_CLASSES}>
+        Ver usuarios internos
+      </Link>
+      <Link href="/home/apps-users/list" className={NAV_LINK_CLASSES}>
+        Ver usuarios de aplicaciones
+      </Link>
       <Link href="/home/applications/create" className={NAV_LINK_CLASSES}>
         Crear aplicación
       </Link>
