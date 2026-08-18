@@ -2,67 +2,82 @@
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { login, LoginApiError } from "@/app/login/components/login-form/login-form.api";
+
+const GENERIC_ERROR_MESSAGE = "No se pudo iniciar sesión. Intentá de nuevo.";
+const HOME_PATH = "/home";
 
 /**
- * Auth here is client-credentials style (clientId/clientSecret against
- * an application user), not human email/password -- see
- * auth-api/src/modules/auth/dto/login.dto.ts. No `.api.ts` yet: the
- * submit just navigates, since there's nothing to request.
+ * Human login (internal-users email/password), not client-credentials --
+ * this is the admin console, opened by a person, not another app. See
+ * auth-api/src/modules/internal-users/dto/login-internal-user.dto.ts.
  */
 export default function LoginForm() {
   const router = useRouter();
-  const [clientId, setClientId] = useState("");
-  const [clientSecret, setClientSecret] = useState("");
 
-  // TODO: conectar con POST /auth/login (a través de una Route Handler
-  // propia, /api/login) en una próxima iteración. Por ahora el submit
-  // no autentica de verdad, solo navega a /home.
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    router.push("/home");
+
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      await login({ email, password });
+      router.push(HOME_PATH);
+    } catch (submitError) {
+      setError(
+        submitError instanceof LoginApiError
+          ? submitError.message
+          : GENERIC_ERROR_MESSAGE,
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
     <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
       <div className="flex flex-col gap-1.5">
-        <label
-          htmlFor="client-id"
-          className="text-sm font-medium text-gray-700"
-        >
-          ID de cliente
+        <label htmlFor="login-email" className="text-sm font-medium text-gray-700">
+          Email
         </label>
         <input
-          id="client-id"
-          type="text"
+          id="login-email"
+          type="email"
           required
-          value={clientId}
-          onChange={(event) => setClientId(event.target.value)}
+          maxLength={30}
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
         />
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label
-          htmlFor="client-secret"
-          className="text-sm font-medium text-gray-700"
-        >
-          Secreto de cliente
+        <label htmlFor="login-password" className="text-sm font-medium text-gray-700">
+          Contraseña
         </label>
         <input
-          id="client-secret"
+          id="login-password"
           type="password"
           required
-          value={clientSecret}
-          onChange={(event) => setClientSecret(event.target.value)}
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
           className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200"
         />
       </div>
 
+      {error && <p className="text-sm text-red-600">{error}</p>}
+
       <button
         type="submit"
-        className="mt-2 rounded-lg bg-gray-900 py-2.5 text-sm font-medium text-white transition hover:bg-gray-800"
+        disabled={isSubmitting}
+        className="mt-2 rounded-lg bg-gray-900 py-2.5 text-sm font-medium text-white transition hover:bg-gray-800 disabled:opacity-60"
       >
-        Ingresar
+        {isSubmitting ? "Ingresando..." : "Ingresar"}
       </button>
     </form>
   );

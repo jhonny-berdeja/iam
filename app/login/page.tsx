@@ -9,7 +9,7 @@ export default function LoginPage() {
             Iniciar sesión
           </h1>
           <p className="mt-1 text-sm text-gray-500">
-            Ingresá las credenciales de tu aplicación cliente.
+            Ingresá con tu cuenta de administrador.
           </p>
         </div>
 
