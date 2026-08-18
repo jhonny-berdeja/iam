@@ -1,13 +1,19 @@
+import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 
+const COOKIE_NAME = "iam-token";
 const REQUEST_TIMEOUT_MS = 10_000;
 
 const CREATED_STATUS = { status: 201 } as const;
 const BAD_REQUEST_STATUS = { status: 400 } as const;
+const UNAUTHENTICATED_STATUS = { status: 401 } as const;
 const NOT_FOUND_STATUS = { status: 404 } as const;
 const CONFLICT_STATUS = { status: 409 } as const;
 const SERVICE_UNAVAILABLE_STATUS = { status: 500 } as const;
 
+const NOT_AUTHENTICATED_MESSAGE = {
+  message: "No autenticado.",
+} as const;
 const API_URL_MISSING_MESSAGE = {
   message:
     "El servicio de usuarios internos no está disponible en este momento.",
@@ -42,6 +48,11 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     );
   }
 
+  const token = await readAuthToken();
+  if (!token) {
+    return NextResponse.json(NOT_AUTHENTICATED_MESSAGE, UNAUTHENTICATED_STATUS);
+  }
+
   const { id } = await params;
 
   const body = await parseRequestBody(request);
@@ -49,7 +60,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json(INVALID_BODY_MESSAGE, BAD_REQUEST_STATUS);
   }
 
-  const apiResponse = await assignRoleInBackend(apiUrl, id, body);
+  const apiResponse = await assignRoleInBackend(apiUrl, token, id, body);
   if (!apiResponse) {
     return NextResponse.json(
       BACKEND_UNREACHABLE_MESSAGE,
@@ -92,15 +103,24 @@ async function parseRequestBody(request: NextRequest): Promise<unknown> {
   }
 }
 
+async function readAuthToken(): Promise<string | undefined> {
+  const cookieStore = await cookies();
+  return cookieStore.get(COOKIE_NAME)?.value;
+}
+
 async function assignRoleInBackend(
   apiUrl: string,
+  token: string,
   internalUserId: string,
   body: unknown,
 ): Promise<Response | null> {
   try {
     return await fetch(`${apiUrl}/internal-users/${internalUserId}/roles`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });

@@ -1,14 +1,20 @@
+import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 
+const COOKIE_NAME = "iam-token";
 const REQUEST_TIMEOUT_MS = 10_000;
 
 const CREATED_STATUS = { status: 201 } as const;
 const BAD_REQUEST_STATUS = { status: 400 } as const;
+const UNAUTHENTICATED_STATUS = { status: 401 } as const;
 const NOT_FOUND_STATUS = { status: 404 } as const;
 const SERVICE_UNAVAILABLE_STATUS = { status: 500 } as const;
 
 const API_URL_MISSING_MESSAGE = {
   message: "El servicio de roles no está disponible en este momento.",
+} as const;
+const NOT_AUTHENTICATED_MESSAGE = {
+  message: "No autenticado.",
 } as const;
 const BACKEND_UNREACHABLE_MESSAGE = {
   message: "No se pudo conectar con el servicio de roles. Intentá de nuevo.",
@@ -35,6 +41,11 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const token = await readAuthToken();
+  if (!token) {
+    return NextResponse.json(NOT_AUTHENTICATED_MESSAGE, UNAUTHENTICATED_STATUS);
+  }
+
   const applicationId = request.nextUrl.searchParams.get("applicationId");
   if (!applicationId) {
     return NextResponse.json(
@@ -43,7 +54,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const apiResponse = await listRolesFromBackend(apiUrl, applicationId);
+  const apiResponse = await listRolesFromBackend(apiUrl, token, applicationId);
   if (!apiResponse) {
     return NextResponse.json(
       BACKEND_UNREACHABLE_MESSAGE,
@@ -67,12 +78,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const token = await readAuthToken();
+  if (!token) {
+    return NextResponse.json(NOT_AUTHENTICATED_MESSAGE, UNAUTHENTICATED_STATUS);
+  }
+
   const body = await parseRequestBody(request);
   if (!body) {
     return NextResponse.json(INVALID_BODY_MESSAGE, BAD_REQUEST_STATUS);
   }
 
-  const apiResponse = await createRoleInBackend(apiUrl, body);
+  const apiResponse = await createRoleInBackend(apiUrl, token, body);
   if (!apiResponse) {
     return NextResponse.json(
       BACKEND_UNREACHABLE_MESSAGE,
@@ -99,6 +115,11 @@ export async function POST(request: NextRequest) {
   return NextResponse.json(responseBody, CREATED_STATUS);
 }
 
+async function readAuthToken(): Promise<string | undefined> {
+  const cookieStore = await cookies();
+  return cookieStore.get(COOKIE_NAME)?.value;
+}
+
 async function parseRequestBody(request: NextRequest): Promise<unknown> {
   try {
     return await request.json();
@@ -110,12 +131,16 @@ async function parseRequestBody(request: NextRequest): Promise<unknown> {
 
 async function createRoleInBackend(
   apiUrl: string,
+  token: string,
   body: unknown,
 ): Promise<Response | null> {
   try {
     return await fetch(`${apiUrl}/roles`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
@@ -127,12 +152,16 @@ async function createRoleInBackend(
 
 async function listRolesFromBackend(
   apiUrl: string,
+  token: string,
   applicationId: string,
 ): Promise<Response | null> {
   try {
     return await fetch(
       `${apiUrl}/roles?applicationId=${encodeURIComponent(applicationId)}`,
-      { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) },
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      },
     );
   } catch (error) {
     console.error("Failed to reach auth-api for the role list", error);

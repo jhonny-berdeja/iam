@@ -1,13 +1,19 @@
+import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
 
+const COOKIE_NAME = "iam-token";
 const REQUEST_TIMEOUT_MS = 10_000;
 
 const BAD_REQUEST_STATUS = { status: 400 } as const;
+const UNAUTHENTICATED_STATUS = { status: 401 } as const;
 const SERVICE_UNAVAILABLE_STATUS = { status: 500 } as const;
 
 const API_URL_MISSING_MESSAGE = {
   message:
     "El servicio de usuarios de aplicación no está disponible en este momento.",
+} as const;
+const NOT_AUTHENTICATED_MESSAGE = {
+  message: "No autenticado.",
 } as const;
 const BACKEND_UNREACHABLE_MESSAGE = {
   message:
@@ -26,7 +32,12 @@ export async function GET() {
     );
   }
 
-  const apiResponse = await listAppUsersFromBackend(apiUrl);
+  const token = await readAuthToken();
+  if (!token) {
+    return NextResponse.json(NOT_AUTHENTICATED_MESSAGE, UNAUTHENTICATED_STATUS);
+  }
+
+  const apiResponse = await listAppUsersFromBackend(apiUrl, token);
   if (!apiResponse) {
     return NextResponse.json(
       BACKEND_UNREACHABLE_MESSAGE,
@@ -46,12 +57,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const token = await readAuthToken();
+  if (!token) {
+    return NextResponse.json(NOT_AUTHENTICATED_MESSAGE, UNAUTHENTICATED_STATUS);
+  }
+
   const body = await parseRequestBody(request);
   if (!body) {
     return NextResponse.json(INVALID_BODY_MESSAGE, BAD_REQUEST_STATUS);
   }
 
-  const apiResponse = await createAppUserInBackend(apiUrl, body);
+  const apiResponse = await createAppUserInBackend(apiUrl, token, body);
   if (!apiResponse) {
     return NextResponse.json(
       BACKEND_UNREACHABLE_MESSAGE,
@@ -60,6 +76,11 @@ export async function POST(request: NextRequest) {
   }
 
   return forwardBackendResponse(apiResponse);
+}
+
+async function readAuthToken(): Promise<string | undefined> {
+  const cookieStore = await cookies();
+  return cookieStore.get(COOKIE_NAME)?.value;
 }
 
 async function parseRequestBody(request: NextRequest): Promise<unknown> {
@@ -73,9 +94,11 @@ async function parseRequestBody(request: NextRequest): Promise<unknown> {
 
 async function listAppUsersFromBackend(
   apiUrl: string,
+  token: string,
 ): Promise<Response | null> {
   try {
     return await fetch(`${apiUrl}/apps-users`, {
+      headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch (error) {
@@ -89,12 +112,16 @@ async function listAppUsersFromBackend(
 
 async function createAppUserInBackend(
   apiUrl: string,
+  token: string,
   body: unknown,
 ): Promise<Response | null> {
   try {
     return await fetch(`${apiUrl}/apps-users`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
