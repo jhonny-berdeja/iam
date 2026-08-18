@@ -5,7 +5,7 @@ export default function HomePage() {
       <h1 className="text-2xl font-semibold text-gray-900">Panel de IAM</h1>
       <p className="max-w-md text-sm text-gray-500">
         Usá las acciones de arriba para crear aplicaciones, roles y usuarios
-        de aplicación.
+        de aplicación
       </p>
     </div>
   );
