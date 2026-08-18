@@ -22,6 +22,41 @@ const APPLICATION_NOT_FOUND_MESSAGE = {
 const BACKEND_ERROR_MESSAGE = {
   message: "El servicio de roles tuvo un problema. Intentá de nuevo.",
 } as const;
+const MISSING_APPLICATION_ID_MESSAGE = {
+  message: "Falta indicar la aplicación.",
+} as const;
+
+export async function GET(request: NextRequest) {
+  const apiUrl = process.env.AUTH_API_URL;
+  if (!apiUrl) {
+    return NextResponse.json(
+      API_URL_MISSING_MESSAGE,
+      SERVICE_UNAVAILABLE_STATUS,
+    );
+  }
+
+  const applicationId = request.nextUrl.searchParams.get("applicationId");
+  if (!applicationId) {
+    return NextResponse.json(
+      MISSING_APPLICATION_ID_MESSAGE,
+      BAD_REQUEST_STATUS,
+    );
+  }
+
+  const apiResponse = await listRolesFromBackend(apiUrl, applicationId);
+  if (!apiResponse) {
+    return NextResponse.json(
+      BACKEND_UNREACHABLE_MESSAGE,
+      SERVICE_UNAVAILABLE_STATUS,
+    );
+  }
+
+  if (isApplicationNotFound(apiResponse)) {
+    return NextResponse.json(APPLICATION_NOT_FOUND_MESSAGE, NOT_FOUND_STATUS);
+  }
+
+  return forwardBackendResponse(apiResponse);
+}
 
 export async function POST(request: NextRequest) {
   const apiUrl = process.env.AUTH_API_URL;
@@ -88,6 +123,28 @@ async function createRoleInBackend(
     console.error("Failed to reach auth-api to create a role", error);
     return null;
   }
+}
+
+async function listRolesFromBackend(
+  apiUrl: string,
+  applicationId: string,
+): Promise<Response | null> {
+  try {
+    return await fetch(
+      `${apiUrl}/roles?applicationId=${encodeURIComponent(applicationId)}`,
+      { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) },
+    );
+  } catch (error) {
+    console.error("Failed to reach auth-api for the role list", error);
+    return null;
+  }
+}
+
+async function forwardBackendResponse(
+  apiResponse: Response,
+): Promise<NextResponse> {
+  const body: unknown = await apiResponse.json().catch(() => null);
+  return NextResponse.json(body, { status: apiResponse.status });
 }
 
 function isApplicationNotFound(apiResponse: Response): boolean {
